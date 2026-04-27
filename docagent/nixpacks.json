@@ -1,0 +1,8 @@
+{
+  "name": "docagent",
+  "version": "1.0.0",
+  "builders": {
+    "type": "nixpacks",
+    "lang": "python"
+  }
+}

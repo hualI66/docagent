@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocAgent - 智能文档生成助手</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #1a1a1a; text-align: center; margin-bottom: 10px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 40px; }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab {
+            padding: 10px 20px;
+            border: none;
+            background: #e0e0e0;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .tab.active { background: #4a90d9; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 500; }
+        input[type="text"], input[type="file"], select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        button {
+            background: #4a90d9;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover { background: #3a7bc8; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .result { margin-top: 20px; display: none; }
+        .result pre {
+            background: #f4f4f4;
+            padding: 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            max-height: 400px;
+        }
+        .result iframe {
+            background: #f4f4f4;
+            border-radius: 6px;
+            min-height: 400px;
+        }
+        .download-links { margin-top: 20px; display: flex; gap: 10px; }
+        .download-links a {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+        .error { color: red; margin-top: 10px; }
+        .loading { text-align: center; padding: 20px; display: none; }
+    </style>
+</head>
+<body>
+    <h1>DocAgent</h1>
+    <p class="subtitle">智能文档生成助手 - 上传文件或输入URL，自动生成专业文档</p>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" data-tab="file">上传文件</button>
+            <button class="tab" data-tab="url">输入URL</button>
+        </div>
+
+        <div id="file-tab" class="tab-content active">
+            <form id="file-form">
+                <div class="form-group">
+                    <label>选择文件</label>
+                    <input type="file" name="file" id="file-input" required>
+                </div>
+                <div class="form-group">
+                    <label>输出格式</label>
+                    <select name="format" id="format-select">
+                        <option value="markdown">Markdown</option>
+                        <option value="pdf">PDF</option>
+                    </select>
+                </div>
+                <button type="submit" id="file-submit">生成文档</button>
+            </form>
+        </div>
+
+        <div id="url-tab" class="tab-content">
+            <form id="url-form">
+                <div class="form-group">
+                    <label>网页URL</label>
+                    <input type="text" name="url" id="url-input" placeholder="https://example.com" required>
+                </div>
+                <div class="form-group">
+                    <label>输出格式</label>
+                    <select name="format" id="url-format-select">
+                        <option value="markdown">Markdown</option>
+                        <option value="pdf">PDF</option>
+                    </select>
+                </div>
+                <button type="submit" id="url-submit">生成文档</button>
+            </form>
+        </div>
+
+        <div id="loading" class="loading">正在生成文档，请稍候...</div>
+
+        <div id="result" class="result">
+            <h3>生成的文档预览</h3>
+            <pre id="preview"></pre>
+            <div class="download-links" id="download-links"></div>
+        </div>
+
+        <div id="error" class="error"></div>
+    </div>
+
+    <script>
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+                // Clear previous results
+                document.getElementById('result').style.display = 'none';
+                document.getElementById('error').textContent = '';
+            });
+        });
+
+        // File form submission
+        document.getElementById('file-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('file-input');
+            if (!fileInput.files[0]) {
+                document.getElementById('error').textContent = '请选择文件';
+                return;
+            }
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('format', document.getElementById('format-select').value);
+
+            await submitForm(formData);
+        });
+
+        // URL form submission
+        document.getElementById('url-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                url: document.getElementById('url-input').value,
+                format: document.getElementById('url-format-select').value
+            };
+            await submitForm(JSON.stringify(data), true);
+        });
+
+        async function submitForm(data, isJson = false) {
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            const error = document.getElementById('error');
+            const preview = document.getElementById('preview');
+
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            error.textContent = '';
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    body: data,
+                    headers: isJson ? { 'Content-Type': 'application/json' } : {},
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || '生成失败');
+                }
+
+                // Get filename from Content-Disposition header or default
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'document.md';
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                    if (match) filename = match[1].replace(/['"]/g, '');
+                }
+
+                // Use blob to trigger download
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+
+                // 检测是否为PDF
+                const isPdf = blob.type === 'application/pdf' || filename.endsWith('.pdf');
+
+                if (isPdf) {
+                    // PDF直接显示预览区域
+                    preview.innerHTML = '<iframe src="' + url + '" width="100%" height="400px" style="border:none;"></iframe>';
+                } else {
+                    // Markdown显示文本预览
+                    const text = await blob.text();
+                    preview.textContent = text;
+                }
+                result.style.display = 'block';
+
+                // 触发下载
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (err) {
+                error.textContent = err.message;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
